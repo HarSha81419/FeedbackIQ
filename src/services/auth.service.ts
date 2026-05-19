@@ -2,7 +2,7 @@ import type { AuthResponse, LoginCredentials, SignupCredentials } from '@/types'
 import { api } from './api';
 import { mockDelay } from './mock';
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false';
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
 
 export async function login(credentials: LoginCredentials): Promise<AuthResponse> {
   if (USE_MOCK) {

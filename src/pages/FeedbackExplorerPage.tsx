@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
@@ -7,7 +6,7 @@ import { Select } from '@/components/ui/Select';
 import { FeedbackTable } from '@/components/feedback/FeedbackTable';
 import { FeedbackDetailPanel } from '@/components/feedback/FeedbackDetailPanel';
 import { TableRowSkeleton } from '@/components/ui/Skeleton';
-import { fetchFeedback } from '@/services/feedback.service';
+import { useFeedbackList } from '@/hooks/useFeedback';
 import type { FeedbackFilters, FeedbackItem, Sentiment, Urgency } from '@/types';
 
 export function FeedbackExplorerPage() {
@@ -20,11 +19,10 @@ export function FeedbackExplorerPage() {
     urgency: 'all',
   });
   const [selected, setSelected] = useState<FeedbackItem | null>(null);
+  const page = 1;
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['feedback', filters],
-    queryFn: () => fetchFeedback(filters),
-  });
+  const { data: paged, isLoading } = useFeedbackList(filters, page, 50);
+  const data = (paged as any)?.items ?? [];
 
   const categories = ['Billing', 'Product', 'Technical', 'Support', 'Churn', 'Bug', 'Documentation'];
 
@@ -104,11 +102,7 @@ export function FeedbackExplorerPage() {
               ))}
             </div>
           ) : (
-            <FeedbackTable
-              items={data ?? []}
-              selectedId={selected?.id}
-              onSelect={setSelected}
-            />
+            <FeedbackTable items={data} selectedId={selected?.id} onSelect={setSelected} />
           )}
         </Card>
         <FeedbackDetailPanel item={selected} onClose={() => setSelected(null)} />

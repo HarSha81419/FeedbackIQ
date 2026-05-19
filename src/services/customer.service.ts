@@ -1,18 +1,22 @@
 import type { Customer, FeedbackItem } from '@/types';
-import { mockCustomers, mockFeedback } from './mockData';
-import { mockDelay } from './mock';
+import { api } from './api';
 
 export async function fetchCustomers(): Promise<Customer[]> {
-  await mockDelay(500);
-  return mockCustomers;
+  const { data } = await api.get<Customer[]>('/customers');
+  console.log('Customer list response', data);
+  return data;
 }
 
 export async function fetchCustomerById(id: string): Promise<Customer | undefined> {
-  await mockDelay(400);
-  return mockCustomers.find((c) => c.id === id);
+  const { data } = await api.get<Customer[]>('/customers');
+  return data.find((c) => c.id === id);
 }
 
 export async function fetchCustomerFeedback(customerId: string): Promise<FeedbackItem[]> {
-  await mockDelay(400);
-  return mockFeedback.filter((f) => f.customerId === customerId);
+  // Fetch a reasonably large page and filter client-side by customerId
+  const { data } = await api.get<{ items: FeedbackItem[] }>('/feedback', { params: { page: 1, pageSize: 200 } });
+  const items = (data.items ?? []) as FeedbackItem[];
+  const filtered = items.filter((f) => f.customerId === customerId || f.customerId === `c-${customerId}`);
+  console.log('fetchCustomerFeedback', { customerId, count: filtered.length });
+  return filtered;
 }

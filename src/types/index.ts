@@ -53,6 +53,11 @@ export interface FeedbackItem {
   score?: number;
 }
 
+export interface CategoryItem {
+  category: string;
+  count: number;
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -130,4 +135,26 @@ export interface ApiKey {
   prefix: string;
   createdAt: string;
   lastUsed?: string;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface SemanticSearchResult {
+  feedback: FeedbackItem;
+  relevance: number;
+}
+
+export interface SemanticSearchResponse {
+  query: string;
+  results: SemanticSearchResult[];
+}
+
+export interface UploadResponse {
+  imported: number;
+  ids: string[];
 }

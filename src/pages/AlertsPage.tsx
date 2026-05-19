@@ -5,20 +5,32 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { SpikeChart } from '@/components/charts/SpikeChart';
-import { mockAlerts, heatmapData } from '@/services/mockData';
-import { mockDelay } from '@/services/mock';
+import { heatmapData } from '@/services/mockData';
+import { fetchAlerts, fetchCategories } from '@/services/dashboard.service';
 import { formatRelativeTime } from '@/utils/format';
 import { cn } from '@/utils/cn';
 
-async function fetchAlerts() {
-  await mockDelay(500);
-  return mockAlerts;
-}
-
 export function AlertsPage() {
-  const { data: alerts } = useQuery({ queryKey: ['alerts'], queryFn: fetchAlerts });
+  const { data: alerts, isLoading: alertsLoading } = useQuery({
+    queryKey: ['alerts'],
+    queryFn: fetchAlerts,
+  });
+
+  const { data: categories, isLoading: categoriesLoading } = useQuery({
+    queryKey: ['analytics', 'categories'],
+    queryFn: fetchCategories,
+  });
 
   const maxHeat = Math.max(...heatmapData.map((h) => h.value));
+  const topCategory = categories?.[0]?.category ?? 'N/A';
+  const avgRiskScore = alerts?.length
+    ? (
+        alerts.reduce((sum, alert) => {
+          const weight = alert.severity === 'critical' ? 1 : alert.severity === 'high' ? 0.85 : alert.severity === 'medium' ? 0.6 : 0.3;
+          return sum + weight;
+        }, 0) / alerts.length
+      ).toFixed(2)
+    : '0.00';
 
   return (
     <>
@@ -26,9 +38,24 @@ export function AlertsPage() {
 
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         {[
-          { label: 'Active alerts', value: 12, trend: '+3', risk: 'high' },
-          { label: 'Spike categories', value: 4, trend: 'Billing', risk: 'medium' },
-          { label: 'Risk score avg', value: '0.64', trend: '+0.08', risk: 'high' },
+          {
+            label: 'Active alerts',
+            value: alertsLoading ? '–' : alerts?.length ?? 0,
+            trend: alertsLoading ? 'Loading' : `Updated ${alerts?.length ?? 0} items`,
+            risk: 'high',
+          },
+          {
+            label: 'Spike categories',
+            value: categoriesLoading ? '–' : categories?.length ?? 0,
+            trend: categoriesLoading ? 'Loading' : topCategory,
+            risk: 'medium',
+          },
+          {
+            label: 'Risk score avg',
+            value: alertsLoading ? '–' : avgRiskScore,
+            trend: alertsLoading ? 'Loading' : `${alerts?.length ?? 0} alerts`,
+            risk: 'high',
+          },
         ].map((stat, i) => (
           <motion.div
             key={stat.label}
