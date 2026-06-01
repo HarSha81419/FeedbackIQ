@@ -1,183 +1,309 @@
-import { useState, useRef, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Send, Sparkles, FileText } from 'lucide-react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Send, Sparkles, FileText, RefreshCcw, Zap } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { suggestedPrompts } from '@/services/mockData';
+import { useStreamChat } from '@/hooks/useChat';
 import type { ChatMessage, Citation } from '@/types';
 
-const mockCitations: Citation[] = [
+const initialMessages: ChatMessage[] = [
   {
-    id: 'c1',
-    feedbackId: 'fb-1',
-    excerpt: 'Billing cycle is confusing — charged twice this month...',
-    sentiment: 'negative',
-    relevance: 0.94,
-  },
-  {
-    id: 'c2',
-    feedbackId: 'fb-5',
-    excerpt: 'Considering canceling — competitor offers better pricing...',
-    sentiment: 'negative',
-    relevance: 0.87,
+    id: 'welcome',
+    role: 'assistant',
+    content:
+      "👋 Hello! I'm your FeedbackIQ AI analyst. Ask me anything about your customer feedback—I'll search our database and provide data-driven insights.",
   },
 ];
 
-const demoResponse =
-  'Based on 847 billing-related feedback items from the last 14 days, negative sentiment increased 34%. Top drivers: duplicate charges (42%), unclear invoices (31%), and refund delays (18%). Five enterprise accounts show churn risk > 0.8 correlated with billing complaints.';
+function createCitation(index: number, source: any): Citation {
+  return {
+    id: `source-${index}`,
+    feedbackId: source.id,
+    excerpt: source.content.length > 120 ? `${source.content.slice(0, 117).trim()}...` : source.content,
+    sentiment: source.sentiment,
+    relevance: source.score ?? source.relevance ?? 0,
+  };
+}
+
+interface MessageWithMetadata extends ChatMessage {
+  queryTime?: number;
+  retrievedCount?: number;
+}
 
 export function InsightsPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: '0',
-      role: 'assistant',
-      content:
-        'Hello! I\'m your FeedbackIQ intelligence assistant. Ask me anything about your customer feedback data.',
-    },
-  ]);
+  const [messages, setMessages] = useState<MessageWithMetadata[]>(initialMessages);
   const [input, setInput] = useState('');
-  const [streaming, setStreaming] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const { streamChat } = useStreamChat();
+
+  const history = useMemo(
+    () =>
+      messages
+        .slice(-6)
+        .filter((msg) => msg.id !== 'welcome')
+        .map((message) => ({ role: message.role, content: message.content })),
+    [messages]
+  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streaming]);
+  }, [messages]);
 
-  const sendMessage = (text: string) => {
-    if (!text.trim() || streaming) return;
+  const sendMessage = useCallback(
+    async (text: string) => {
+      if (!text.trim()) return;
 
-    const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', content: text };
-    setMessages((m) => [...m, userMsg]);
-    setInput('');
-    setStreaming(true);
+      const cleaned = text.trim();
+      const userMessage: ChatMessage = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content: cleaned,
+      };
+      const assistantId = `assistant-${Date.now()}`;
+      const assistantMessage: MessageWithMetadata = {
+        id: assistantId,
+        role: 'assistant',
+        content: '',
+        isStreaming: true,
+      };
 
-    const assistantId = (Date.now() + 1).toString();
-    setMessages((m) => [
-      ...m,
-      { id: assistantId, role: 'assistant', content: '', isStreaming: true },
-    ]);
+      setMessages((current) => [...current, userMessage, assistantMessage]);
+      setInput('');
 
-    let i = 0;
-    const interval = setInterval(() => {
-      i += 3;
-      if (i >= demoResponse.length) {
-        clearInterval(interval);
-        setMessages((m) =>
-          m.map((msg) =>
+      try {
+        let fullResponse = '';
+
+        for await (const token of streamChat({
+          query: cleaned,
+          history,
+          limit: 7,
+        })) {
+          fullResponse += token;
+          setMessages((current) =>
+            current.map((msg) =>
+              msg.id === assistantId
+                ? { ...msg, content: fullResponse, isStreaming: true }
+                : msg
+            )
+          );
+        }
+
+        // After streaming is complete, fetch the full response with sources
+        const { chatQuery } = await import('@/services/chat.service');
+        const fullData = await chatQuery({ query: cleaned, history, limit: 7 });
+        const citations = fullData.sources.slice(0, 4).map((source, index) => createCitation(index, source));
+
+        setMessages((current) =>
+          current.map((msg) =>
             msg.id === assistantId
-              ? { ...msg, content: demoResponse, isStreaming: false, citations: mockCitations }
+              ? {
+                  ...msg,
+                  content: fullResponse,
+                  isStreaming: false,
+                  citations,
+                  queryTime: fullData.query_time_ms,
+                  retrievedCount: fullData.retrieved_count,
+                }
               : msg
           )
         );
-        setStreaming(false);
-      } else {
-        setMessages((m) =>
-          m.map((msg) =>
-            msg.id === assistantId ? { ...msg, content: demoResponse.slice(0, i) } : msg
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        setMessages((current) =>
+          current.map((msg) =>
+            msg.id === assistantId
+              ? {
+                  ...msg,
+                  content: `Sorry, I encountered an error: ${errorMsg}`,
+                  isStreaming: false,
+                }
+              : msg
           )
         );
       }
-    }, 30);
-  };
+    },
+    [history, streamChat]
+  );
 
   return (
     <>
       <PageHeader
         title="AI Insights"
-        subtitle="RAG-powered conversational intelligence over your feedback"
+        subtitle="Conversational intelligence over your customer feedback"
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-12rem)]">
-        <Card className="lg:col-span-1 p-4" padding="none">
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-3">
-            Suggested prompts
-          </p>
-          <div className="space-y-2">
+        {/* Sidebar */}
+        <Card className="lg:col-span-1 p-4 flex flex-col" padding="none">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div>
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+                Quick Prompts
+              </p>
+              <p className="mt-2 text-xs text-slate-400">
+                Start with a suggested question or write your own.
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setMessages(initialMessages)}
+              className="shrink-0"
+              title="Clear chat"
+            >
+              <RefreshCcw className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="space-y-2 flex-1 overflow-y-auto mb-4">
             {suggestedPrompts.map((prompt) => (
-              <button
+              <motion.button
                 key={prompt}
                 type="button"
                 onClick={() => sendMessage(prompt)}
-                className="w-full text-left text-sm text-slate-400 rounded-lg px-3 py-2.5 hover:bg-white/5 hover:text-slate-200 transition-colors border border-transparent hover:border-border"
+                whileHover={{ x: 4 }}
+                className="w-full text-left text-xs text-slate-400 rounded-lg px-3 py-2.5 hover:bg-white/5 hover:text-slate-200 transition-colors border border-transparent hover:border-border/50"
               >
+                <Zap className="h-3 w-3 inline mr-1.5" />
                 {prompt}
-              </button>
+              </motion.button>
             ))}
           </div>
+
+          {messages.length > 1 && (
+            <div className="rounded-lg border border-border/50 bg-surface-elevated/30 p-3 text-xs text-slate-400 space-y-1">
+              <p className="font-semibold text-slate-300">Session Stats</p>
+              <p>Messages: {messages.length - 1}</p>
+              {messages.some((m) => m.queryTime) && (
+                <p>
+                  Avg Query: {Math.round((messages.filter((m) => m.queryTime).reduce((a, m) => a + (m.queryTime || 0), 0) / (messages.filter((m) => m.queryTime).length || 1)) || 0)}ms
+                </p>
+              )}
+            </div>
+          )}
         </Card>
 
+        {/* Chat Area */}
         <Card className="lg:col-span-3 flex flex-col overflow-hidden" padding="none">
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-            {messages.map((msg) => (
-              <motion.div
-                key={msg.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-                    msg.role === 'user'
-                      ? 'bg-accent-cyan/10 border border-accent-cyan/20 text-slate-200'
-                      : 'glass text-slate-300'
-                  }`}
+            <AnimatePresence>
+              {messages.map((msg) => (
+                <motion.div
+                  key={msg.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  {msg.role === 'assistant' && (
-                    <Sparkles className="h-4 w-4 text-accent-indigo mb-2" />
-                  )}
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                    {msg.content}
-                    {msg.isStreaming ? (
-                      <span className="inline-block w-2 h-4 ml-1 bg-accent-cyan animate-pulse" />
-                    ) : null}
-                  </p>
-                  {msg.citations && msg.citations.length > 0 ? (
-                    <div className="mt-4 space-y-2">
-                      <p className="text-xs text-slate-500 font-medium">Sources</p>
-                      {msg.citations.map((cite) => (
-                        <div
-                          key={cite.id}
-                          className="rounded-lg border border-border bg-surface-elevated/50 p-3 text-xs"
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            <FileText className="h-3.5 w-3.5 text-slate-500" />
-                            <span className="text-slate-500">{cite.feedbackId}</span>
-                            <Badge variant={cite.sentiment}>{cite.sentiment}</Badge>
-                            <span className="text-accent-cyan ml-auto">
-                              {(cite.relevance * 100).toFixed(0)}% match
-                            </span>
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                      msg.role === 'user'
+                        ? 'bg-accent-cyan/10 border border-accent-cyan/20 text-slate-200'
+                        : 'glass text-slate-300 space-y-3'
+                    }`}
+                  >
+                    {msg.role === 'assistant' && (
+                      <div className="flex items-center gap-2 mb-1">
+                        <Sparkles className="h-4 w-4 text-accent-indigo" />
+                        <span className="text-xs text-slate-500">FeedbackIQ AI</span>
+                        {msg.retrievedCount !== undefined && (
+                          <span className="text-xs text-slate-600">
+                            ({msg.retrievedCount} sources)
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                      {msg.content}
+                      {msg.isStreaming && (
+                        <span className="inline-block w-2 h-4 ml-1 bg-accent-cyan animate-pulse" />
+                      )}
+                    </p>
+
+                    {msg.citations && msg.citations.length > 0 && !msg.isStreaming && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="mt-4 pt-3 border-t border-border/30 space-y-2"
+                      >
+                        <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">
+                          Sources
+                        </p>
+                        {msg.citations.map((cite) => (
+                          <div
+                            key={cite.id}
+                            className="rounded-lg border border-border/50 bg-surface-elevated/30 p-3 text-xs hover:bg-surface-elevated/50 transition-colors"
+                          >
+                            <div className="flex items-center gap-2 mb-2">
+                              <FileText className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                              <span className="text-slate-600 truncate">{cite.feedbackId}</span>
+                              <Badge variant={cite.sentiment} className="text-xs">
+                                {cite.sentiment}
+                              </Badge>
+                              <span className="text-accent-cyan ml-auto shrink-0 font-medium">
+                                {(cite.relevance * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                            <p className="text-slate-400 italic line-clamp-2">
+                              "{cite.excerpt}"
+                            </p>
                           </div>
-                          <p className="text-slate-400 italic">&ldquo;{cite.excerpt}&rdquo;</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              </motion.div>
-            ))}
+                        ))}
+                      </motion.div>
+                    )}
+
+                    {msg.queryTime && msg.role === 'assistant' && !msg.isStreaming && (
+                      <motion.p
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="text-xs text-slate-600 pt-2 border-t border-border/20 mt-2"
+                      >
+                        Query: {msg.queryTime}ms
+                      </motion.p>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
             <div ref={bottomRef} />
           </div>
 
-          <div className="border-t border-border p-4">
+          <div className="border-t border-border p-4 bg-surface-elevated/30">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 sendMessage(input);
               }}
-              className="flex gap-2"
+              className="space-y-2"
             >
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask about trends, churn, sentiment..."
-                className="flex-1 rounded-lg border border-border bg-surface-elevated/50 px-4 py-2.5 text-sm focus-ring"
-                disabled={streaming}
-              />
-              <Button type="submit" disabled={streaming || !input.trim()}>
-                <Send className="h-4 w-4" />
-              </Button>
+              <div className="flex gap-2">
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      sendMessage(input);
+                    }
+                  }}
+                  placeholder="Ask about trends, churn, sentiment, complaints... (Shift+Enter for new line)"
+                  className="flex-1 min-h-[56px] max-h-[200px] rounded-lg border border-border bg-surface-elevated/50 px-4 py-3 text-sm text-slate-200 placeholder:text-slate-500 focus-ring resize-none"
+                />
+                <Button
+                  type="submit"
+                  size="lg"
+                  disabled={!input.trim()}
+                  className="self-end"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-slate-500">
+                Ollama local LLM • Powered by customer feedback retrieval
+              </p>
             </form>
           </div>
         </Card>

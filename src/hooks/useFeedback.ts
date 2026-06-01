@@ -29,7 +29,17 @@ export function useSemanticSearch() {
 
 export function useUploadCsv() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (file: File) => uploadCsv(file), onSuccess: () => qc.invalidateQueries({ queryKey: ['feedback'] }) });
+  return useMutation({
+    mutationFn: (file: File) => uploadCsv(file),
+    onSuccess: () => {
+      // Refresh feedback, dashboard, analytics, alerts, customers
+      qc.invalidateQueries({ queryKey: ['feedback'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['analytics'] });
+      qc.invalidateQueries({ queryKey: ['alerts'] });
+      qc.invalidateQueries({ queryKey: ['customers'] });
+    },
+  });
 }
 
 export function useSimilarFeedback() {

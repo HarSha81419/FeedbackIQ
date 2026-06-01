@@ -26,6 +26,8 @@ copy .env.example .env
 ```
 
 Set `MOCK_AI=true` in `.env` for fast local dev without downloading ML models.
+Add `OPENAI_API_KEY=<your-key>` for OpenAI integration (optional fallback).
+Configure `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, and `OLLAMA_TIMEOUT` to enable local LLM inference.
 
 ```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
@@ -69,8 +71,90 @@ $env:PORT=8001; uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 | GET | `/api/dashboard` | Dashboard KPIs & charts |
 | GET | `/api/alerts` | Alerts list |
 | GET | `/api/customers` | Customer 360 stats |
+| POST | `/api/chat/query` | RAG-powered chat query (non-streaming) |
+| POST | `/api/chat/query-stream` | Streaming RAG chat response |
 
 All protected routes require header: `Authorization: Bearer <token>`
+
+## Ollama Integration
+
+FeedbackIQ now features **true conversational AI** powered by **Ollama** — a local LLM inference engine that replaces the robotic template-based summarization.
+
+### Prerequisites
+
+1. **Install Ollama**:
+   ```bash
+   # macOS/Linux
+   curl -fsSL https://ollama.ai/install.sh | sh
+   
+   # Windows (use WSL2 recommended)
+   # Download from https://ollama.ai
+   ```
+
+2. **Pull a model** (default is `phi3`):
+```bash
+ollama pull phi3
+# Or try other models:
+# ollama pull llama2
+# ollama pull phi3
+```
+
+3. **Start Ollama** (listens on `http://localhost:11434` by default):
+   ```bash
+   ollama serve
+   ```
+
+### Configuration
+
+In `backend/.env`:
+
+```env
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=phi3              # or llama2, phi3, gemma, etc.
+OLLAMA_TIMEOUT=120                # Request timeout in seconds
+```
+
+### How It Works
+
+**RAG Pipeline**:
+1. User sends query → embedding generated via sentence-transformers
+2. FAISS retrieves top-k semantically similar feedback entries
+3. Retrieved feedback + user query sent to Ollama model
+4. Ollama generates contextual, conversational response
+5. Response streamed back to frontend in real-time
+
+**Features**:
+- ✅ Natural language responses (no robotic summaries)
+- ✅ Grounded in real customer feedback
+- ✅ Streaming tokens for live typing effect
+- ✅ Conversation history support
+- ✅ Fallback to local summarizer if Ollama unavailable
+- ✅ Smart prompt engineering with sentiment/category context
+
+### Performance Tips
+
+- **Model selection**: `phi3` is fast and lightweight; `llama2` is accuracy-focused
+- **Timeout**: Increase if on slow hardware
+- **Max tokens**: Model generation typically 2-4 seconds
+
+### Example Conversation
+
+**User**: "What are customers saying about delivery?"
+
+**AI Response** (powered by Ollama):
+> "Customers generally appreciate our fast delivery experience, with 68% positive feedback. However, we're seeing complaints about inconsistent delivery times during peak hours, particularly from enterprise customers. Several users mentioned missing real-time tracking updates. These issues are concentrated in the Logistics category and correlate with our 0.6+ churn risk segment."
+
+(Not: "Most matching feedback is positive. Top themes are...")
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Connection refused | Ensure `ollama serve` is running |
+| Slow responses | Check hardware; try smaller model (`phi`) |
+| Out of memory | Reduce `OLLAMA_TIMEOUT` or use lighter model |
+| Not streaming | Verify `/api/chat/query-stream` endpoint in browser |
+
 
 ## PostgreSQL
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Search } from 'lucide-react';
+import { UploadDropzone } from '@/components/feedback/UploadDropzone';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Select } from '@/components/ui/Select';
@@ -32,6 +33,12 @@ export function FeedbackExplorerPage() {
         title="Feedback Explorer"
         subtitle="Search and analyze customer feedback semantically"
       />
+
+      <Card className="mb-6" padding="md">
+        <div className="mb-4">
+          <UploadDropzone />
+        </div>
+      </Card>
 
       <Card className="mb-6" padding="md">
         <div className="flex flex-col lg:flex-row gap-4">

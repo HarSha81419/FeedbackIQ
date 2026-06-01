@@ -83,6 +83,13 @@ class FaissIndexService:
         except Exception as exc:
             logger.error("Failed to save FAISS index: %s", exc)
 
+    def clear(self) -> None:
+        """Clear the FAISS index and persist an empty state."""
+        self._ensure_dirs()
+        self._index = self._create_index(self._dim)
+        self._id_map = []
+        self.save()
+
     def add_feedback(self, feedback_id: int, text: str) -> int:
         """Add a feedback vector to the index; returns FAISS position."""
         if feedback_id in self._id_map:
@@ -106,12 +113,25 @@ class FaissIndexService:
         return len(self._id_map) - 1
 
     def search(self, query: str, limit: int = 10) -> list[tuple[int, float]]:
-        """Return (feedback_id, similarity_score) pairs."""
+        """Return (feedback_id, similarity_score) pairs using a text query."""
         self.load()
         if self._index is None or self._index.ntotal == 0:
             return []
 
         q = encode_text(query).astype(np.float32).reshape(1, -1)
+        norm = np.linalg.norm(q)
+        if norm > 0:
+            q = q / norm
+
+        return self.search_embeddings(q, limit=limit)
+
+    def search_embeddings(self, vector: np.ndarray, limit: int = 10) -> list[tuple[int, float]]:
+        """Return (feedback_id, similarity_score) pairs using a prepared embedding."""
+        self.load()
+        if self._index is None or self._index.ntotal == 0:
+            return []
+
+        q = vector.astype(np.float32).reshape(1, -1)
         norm = np.linalg.norm(q)
         if norm > 0:
             q = q / norm

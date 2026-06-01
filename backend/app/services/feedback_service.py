@@ -27,21 +27,26 @@ class FeedbackService:
         source: str = "manual",
         category: str | None = None,
         customer_id: str | None = None,
+        timestamp: datetime | None = None,
     ) -> FeedbackEntry:
         """Create feedback, run sentiment analysis, and index for search."""
         sentiment = analyze_sentiment(feedback_text)
         cat = category or infer_category(feedback_text)
         urgency = compute_urgency_score(feedback_text, sentiment.label, sentiment.confidence)
 
-        entry = FeedbackEntry(
-            customer_name=customer_name,
-            customer_id=customer_id or slug_customer_id(customer_name),
-            feedback_text=feedback_text,
-            source=source,
-            sentiment=sentiment.label,
-            category=cat,
-            urgency_score=urgency,
-        )
+        entry_data = {
+            "customer_name": customer_name,
+            "customer_id": customer_id or slug_customer_id(customer_name),
+            "feedback_text": feedback_text,
+            "source": source,
+            "sentiment": sentiment.label,
+            "category": cat,
+            "urgency_score": urgency,
+        }
+        if timestamp is not None:
+            entry_data["timestamp"] = timestamp
+
+        entry = FeedbackEntry(**entry_data)
         db.add(entry)
         db.flush()
 
@@ -111,25 +116,55 @@ class FeedbackService:
         )
 
     def import_csv(self, db: Session, file_content: bytes) -> list[FeedbackEntry]:
-        """Import feedback rows from CSV (customer_name, feedback_text, source, category)."""
+        """Import feedback rows from CSV (customer_id/customer_name, feedback_text/feedback, source, timestamp, category)."""
         text = file_content.decode("utf-8-sig")
         reader = csv.DictReader(io.StringIO(text))
         created: list[FeedbackEntry] = []
 
         for row in reader:
-            name = row.get("customer_name") or row.get("customer") or row.get("name")
+            customer_id = row.get("customer_id") or row.get("customer") or row.get("name")
+            name = (
+                row.get("customer_name")
+                or row.get("customer")
+                or row.get("name")
+                or row.get("customer_id")
+            )
             content = row.get("feedback_text") or row.get("feedback") or row.get("content")
             if not name or not content:
                 continue
+
+            timestamp_value = None
+            raw_timestamp = row.get("timestamp")
+            if raw_timestamp:
+                try:
+                    timestamp_value = datetime.fromisoformat(raw_timestamp.strip())
+                except ValueError:
+                    pass
+
             entry = self.create_feedback(
                 db,
                 customer_name=name.strip(),
                 feedback_text=content.strip(),
                 source=(row.get("source") or "csv").strip(),
                 category=row.get("category"),
+                customer_id=customer_id,
+                timestamp=timestamp_value,
             )
             created.append(entry)
         return created
+
+    def delete_feedback(self, db: Session, feedback_id: int) -> None:
+        """Delete a single feedback entry."""
+        entry = self.get_by_id(db, feedback_id)
+        if entry:
+            db.delete(entry)
+            db.commit()
+
+    def delete_all_feedback(self, db: Session) -> None:
+        """Delete all feedback entries."""
+        db.query(FeedbackEntry).delete()
+        db.query(SentimentResult).delete()
+        db.commit()
 
 
 feedback_service = FeedbackService()

@@ -158,3 +158,29 @@ export interface UploadResponse {
   imported: number;
   ids: string[];
 }
+
+export interface ChatHistoryItem {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface ChatQueryPayload {
+  query: string;
+  limit?: number;
+  category?: string;
+  sentiment?: Sentiment;
+  source?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  history?: ChatHistoryItem[];
+}
+
+export interface ChatResponsePayload {
+  query: string;
+  answer: string;
+  sources: FeedbackItem[];
+  matched_feedback: FeedbackItem[];
+  retrieved_count: number;
+  query_time_ms: number;
+  model_time_ms: number;
+}

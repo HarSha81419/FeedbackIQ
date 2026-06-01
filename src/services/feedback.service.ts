@@ -71,3 +71,25 @@ export async function similarFeedback(feedbackId: string | number, limit = 5): P
   console.log('similarFeedback', data);
   return data;
 }
+
+export async function deleteAllFeedback(): Promise<void> {
+  await api.delete('/feedback');
+}
+
+export async function getDatasetStats(): Promise<{
+  total_feedback: number;
+  sentiment_distribution: Record<string, number>;
+  category_distribution: Record<string, number>;
+}> {
+  const { data } = await api.get('/feedback/stats');
+  return data;
+}
+
+export async function replaceDataset(file: File): Promise<UploadResponse> {
+  const form = new FormData();
+  form.append('file', file);
+  const { data } = await api.post<UploadResponse>('/feedback/replace-dataset', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}

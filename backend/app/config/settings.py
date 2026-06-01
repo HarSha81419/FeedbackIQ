@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     debug: bool = True
     api_prefix: str = "/api"
 
-    database_url: str = "sqlite:///./feedbackiq.db"
+    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/feedbackiq"
 
     secret_key: str = "change-me-to-a-long-random-secret-in-production"
     access_token_expire_minutes: int = 60 * 24 * 7
@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     embedding_model: str = "all-MiniLM-L6-v2"
     faiss_index_path: str = "./data/faiss_index.bin"
     faiss_id_map_path: str = "./data/faiss_ids.json"
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-3.5-turbo"
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "phi3"
+    ollama_timeout: int = 120
 
     @field_validator("cors_origins", mode="before")
     @classmethod

@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from app.core.security import get_password_hash
 from app.database.base import Base
-from app.database.session import SessionLocal, engine
+from app.database.session import SessionLocal, engine, ensure_database_exists
 from app.models import Alert, FeedbackEntry, User
 from app.models.alert import AlertSeverity, AlertStatus
 from app.models.user import UserRole
@@ -66,7 +66,8 @@ SEED_ALERTS = [
 
 
 def init_database() -> None:
-    """Create tables and optionally seed development data."""
+    """Create the target database and tables on startup."""
+    ensure_database_exists()
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables created")
 

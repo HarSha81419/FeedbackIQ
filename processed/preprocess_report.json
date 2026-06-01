@@ -1,0 +1,32 @@
+{
+  "output_path": "processed\\feedbackiq_dataset.csv",
+  "meta": {
+    "encoding": "utf-8",
+    "delimiter": ",",
+    "file_type": "text"
+  },
+  "used_mapping": {
+    "customer_id": "author_name",
+    "feedback": "review_text",
+    "timestamp": "review_datetime_utc",
+    "category": "review_rating",
+    "source": "author_app_version"
+  },
+  "stats": {
+    "initial_rows": 10000,
+    "invalid_timestamps": 0,
+    "rows_with_empty_feedback": 91,
+    "duplicates_removed": 2794,
+    "final_rows": 7115,
+    "rows_skipped": 2885,
+    "missing_values_count": {
+      "customer_id": 0,
+      "feedback": 0,
+      "timestamp": 0,
+      "category": 0,
+      "source": 1083,
+      "_ts_parsed": 0,
+      "_feedback_nonempty": 0
+    }
+  }
+}
